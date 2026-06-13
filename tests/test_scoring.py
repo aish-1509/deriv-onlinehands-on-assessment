@@ -1,6 +1,6 @@
 import pytest
 
-from app.scoring import normalize_text, score_answers
+from app.scoring import PARTIAL_SCORE_CAP, normalize_text, score_answers
 
 
 def test_normalization_and_exact_match() -> None:
@@ -39,3 +39,10 @@ def test_zero_score_edge_cases(
 
     assert result.score == 0.0
     assert result.reason == expected_reason
+
+
+def test_partial_score_never_reaches_exact_match_threshold() -> None:
+    result = score_answers("yes", "yes please confirm")
+
+    assert result.score <= PARTIAL_SCORE_CAP
+    assert result.is_exact is False

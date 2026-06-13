@@ -14,21 +14,24 @@ produce the same output.
 
 ## 2. Choose the Smallest Useful Architecture
 
-Use one FastAPI endpoint and separate HTTP concerns from scoring concerns:
+Use one evaluation service with two small interfaces, and separate input/output
+concerns from scoring concerns:
 
 ```text
-HTTP request
-    |
-    v
-app/main.py          Parse and validate the request
-    |
-    v
+HTTP request                 JSON file or stdin
+    |                              |
+    v                              v
+app/main.py                    app/cli.py
+    |                              |
+    +--------------+---------------+
+                   |
+                   v
 app/service.py       Evaluate all items and aggregate statistics
-    |
-    v
+                   |
+                   v
 app/scoring.py       Normalize and score one answer pair
-    |
-    v
+                   |
+                   v
 app/models.py        Shape and validate the response
 ```
 
@@ -125,7 +128,7 @@ The empty-list case is handled without division by zero and returns:
 }
 ```
 
-## 7. Keep the HTTP Layer Thin
+## 7. Keep Both Interfaces Thin
 
 `app/main.py` contains no scoring math. It only:
 
@@ -134,11 +137,22 @@ The empty-list case is handled without division by zero and returns:
 3. Accepts `POST /evaluate`.
 4. Delegates the batch to `evaluate_items`.
 
-The root `main.py` re-exports the app so the run command remains memorable:
+`app/cli.py` also contains no scoring math. It:
+
+1. Reads JSON from a file or standard input.
+2. Validates the same `EvaluationItem` model used by FastAPI.
+3. Delegates the batch to `evaluate_items`.
+4. Prints the typed response as JSON.
+
+The root `main.py` exposes the FastAPI app and runs the CLI:
 
 ```bash
+python main.py < sample_input.json
+python main.py sample_input.json
 uvicorn main:app --reload
 ```
+
+No `.env` file, API key, or external service is required.
 
 ## 8. Test by Responsibility
 
@@ -148,6 +162,8 @@ The tests are split for fast diagnosis:
   answers, and zero overlap
 - `test_service.py`: summary arithmetic and empty batches
 - `test_api.py`: HTTP response shape, missing answers, and schema validation
+- `test_cli.py`: stdin, file input, JSON output, and invalid input behavior
+- `test_environment.py`: verifies the project runs without `.env` or API keys
 
 Run everything with:
 
@@ -181,6 +197,8 @@ A concise walkthrough can sound like this:
    evaluation outcome. Missing IDs return `422` because the request itself is
    invalid."
 6. "The tests cover the algorithm, aggregation, and HTTP contract independently."
+7. "The CLI and API share the same service, so both interfaces produce the same
+   scores without duplicated business logic."
 
 ## 10. Tradeoffs
 
