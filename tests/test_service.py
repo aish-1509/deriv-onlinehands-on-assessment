@@ -32,8 +32,8 @@ def test_sample_batch_summary() -> None:
 
     response = evaluate_items(items)
 
-    assert [result.score for result in response.results] == [0.6667, 0.0, 0.4, 1.0]
-    assert response.summary.average_score == 0.5167
+    assert [result.score for result in response.results] == [0.4, 0.0, 0.4, 1.0]
+    assert response.summary.average_score == 0.45
     assert response.summary.number_of_items == 4
     assert response.summary.exact_matches == 1
     assert response.summary.failed_items == 1

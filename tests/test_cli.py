@@ -21,7 +21,7 @@ def test_cli_reads_json_from_standard_input() -> None:
     assert completed.stderr == ""
     output = json.loads(completed.stdout)
     assert output["summary"] == {
-        "average_score": 0.5167,
+        "average_score": 0.45,
         "number_of_items": 4,
         "exact_matches": 1,
         "failed_items": 1,

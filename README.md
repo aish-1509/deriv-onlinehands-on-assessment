@@ -1,292 +1,143 @@
 # AI Answer Evaluator
 
-A small FastAPI and CLI tool that compares AI model answers with reference
-answers using local, deterministic scoring. It makes no external API or LLM
-calls and requires no environment variables.
+[![CI](https://github.com/aish-1509/deriv-onlinehands-on-assessment/actions/workflows/ci.yml/badge.svg)](https://github.com/aish-1509/deriv-onlinehands-on-assessment/actions/workflows/ci.yml)
 
-## What This Does
+A local Python tool that compares AI model answers with reference answers using
+simple, deterministic rules. It supports both FastAPI and CLI usage and makes
+no external API or LLM calls.
 
-Send a JSON list of evaluation items to `POST /evaluate`, or pass the same JSON
-to the CLI. For each item, the evaluator returns:
+## Requirements Coverage
 
-- the original `id`
-- a score from `0.0` to `1.0`
-- a short explanation
-
-It also returns the average score, item count, exact-match count, and failed
-item count.
-
-## Scoring Rules
-
-1. Lowercase each answer and trim surrounding whitespace.
-2. Return `0.0` if either normalized answer is empty.
-3. Return `1.0` if the normalized answers are identical.
-4. Otherwise, extract unique word tokens, remove common stopwords, and
-   calculate token-set F1:
-
-   ```text
-   partial score = 2 * shared tokens / (reference tokens + model tokens)
-   ```
-
-5. Cap partial scores at `0.99`, so only an exact normalized match receives
-   `1.0`.
-6. Round scores and the batch average to four decimal places.
-
-This makes scoring repeatable and easy to explain. It does not attempt to
-measure semantic equivalence.
+| Requirement | Implementation |
+| --- | --- |
+| Accept a list of evaluation items | JSON list through `POST /evaluate`, stdin, or a file |
+| Normalize answers | Lowercase and trim surrounding whitespace |
+| Exact score | `1.0` for equal normalized answers |
+| Partial score | Token-set F1 overlap for non-exact answers |
+| Missing answer | `0.0` with a short reason |
+| Per-item output | `id`, `score`, and `reason` |
+| Summary | Average, item count, exact matches, and failed items |
+| Local only | No external services or environment variables |
 
 ## Project Structure
 
 ```text
-.
-├── app/
-│   ├── main.py          # FastAPI routes
-│   ├── cli.py           # File/stdin JSON interface
-│   ├── models.py        # Request and response schemas
-│   ├── scoring.py       # Pure normalization and scoring logic
-│   └── service.py       # Batch evaluation and summary calculation
-├── tests/
-│   ├── test_api.py
-│   ├── test_cli.py
-│   ├── test_entrypoint.py
-│   ├── test_environment.py
-│   ├── test_scoring.py
-│   └── test_service.py
-├── docs/
-│   └── IMPLEMENTATION_GUIDE.md
-├── .env.example         # Documents that no environment is required
-├── main.py              # CLI entry point and FastAPI app export
-├── sample_input.json
-├── requirements.txt
-└── requirements-dev.txt
+app/
+  cli.py       JSON file/stdin interface
+  main.py      FastAPI routes
+  models.py    Request and response models
+  scoring.py   Pure deterministic scoring
+  service.py   Batch evaluation and summary
+tests/         Unit, API, CLI, and edge-case tests
+docs/          Design and extension notes
+main.py        API/CLI entry point
+sample_input.json
 ```
 
-## Run Locally
-
-Python 3.11 or newer is recommended.
-
-1. Create and activate a virtual environment:
-
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate    # Windows: .venv\Scripts\activate
-   ```
-
-2. Install runtime and test dependencies:
-
-   ```bash
-   python -m pip install -r requirements-dev.txt
-   ```
-
-   No `.env` file or API key is needed.
-
-3. Run the tests:
-
-   ```bash
-   pytest
-   ```
-
-## Run as a CLI
-
-Read the sample from standard input:
+## Setup
 
 ```bash
-cat sample_input.json | python main.py
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+pytest
 ```
 
-Or pass the input file directly:
+No `.env` file or API key is required.
+
+## Run the API
+
+```bash
+python main.py
+```
+
+Open:
+
+- Service information: http://127.0.0.1:8000/
+- Interactive API docs: http://127.0.0.1:8000/docs
+- Health check: http://127.0.0.1:8000/health
+
+Evaluate the sample:
+
+```bash
+curl --silent \
+  --request POST \
+  --header "Content-Type: application/json" \
+  --data @sample_input.json \
+  http://127.0.0.1:8000/evaluate | python -m json.tool
+```
+
+## Run the CLI
+
+From stdin:
+
+```bash
+python main.py < sample_input.json
+```
+
+From a file:
 
 ```bash
 python main.py sample_input.json
 ```
 
-Both commands print the complete JSON result to standard output. Invalid JSON
-or invalid item structure is written to standard error with exit code `2`.
+Invalid JSON or invalid item structure is written to stderr with exit code `2`.
 
-## Run as an API
+## Scoring
 
-1. Start the API:
-
-   ```bash
-   python main.py
-   ```
-
-2. Open the service landing response or interactive documentation:
+1. Convert each answer to lowercase and trim surrounding whitespace.
+2. Return `0.0` when either normalized answer is empty.
+3. Return `1.0` when normalized answers match exactly.
+4. Otherwise, extract unique word tokens and calculate:
 
    ```text
-   http://127.0.0.1:8000/
-   http://127.0.0.1:8000/docs
+   token F1 = 2 * shared_token_count
+              / (reference_token_count + model_token_count)
    ```
 
-3. In another terminal, evaluate the sample data:
+5. Cap partial scores at `0.99`, keeping `1.0` reserved for exact matches.
+6. Round item scores and the average to four decimal places.
 
-   ```bash
-   curl --silent \
-     --request POST \
-     --header "Content-Type: application/json" \
-     --data @sample_input.json \
-     http://127.0.0.1:8000/evaluate | python -m json.tool
-   ```
-
-For development with automatic reload, use:
-
-```bash
-uvicorn main:app --reload
-```
-
-## Example Output
-
-The included `sample_input.json` produces:
+The included sample returns scores `[0.4, 0.0, 0.4, 1.0]` and:
 
 ```json
 {
-  "results": [
-    {"id": "1", "score": 0.6667, "reason": "Partial token overlap: 1 shared token(s) across 1 reference and 2 model token(s)."},
-    {"id": "2", "score": 0.0,  "reason": "No shared tokens after normalization."},
-    {"id": "3", "score": 0.4,  "reason": "Partial token overlap: 1 shared token(s) across 1 reference and 4 model token(s)."},
-    {"id": "4", "score": 1.0,  "reason": "Exact match after normalization."}
-  ],
-  "summary": {
-    "average_score": 0.5167,
-    "number_of_items": 4,
-    "exact_matches": 1,
-    "failed_items": 1
-  }
+  "average_score": 0.45,
+  "number_of_items": 4,
+  "exact_matches": 1,
+  "failed_items": 1
 }
 ```
 
 ## Edge Cases
 
-- Missing, null, or whitespace-only answers receive `0.0`.
-- Answers with no shared word tokens receive `0.0`.
-- An empty input list returns an empty result list and a zeroed summary.
-- Structurally invalid items, such as an item without `id`, return HTTP `422`.
-- Punctuation is ignored during partial token comparison.
+- Missing, null, or whitespace-only answers score `0.0`.
+- Answers with no shared tokens score `0.0`.
+- An empty list returns an empty result list and a zeroed summary.
+- Structurally invalid items return HTTP `422` or CLI exit code `2`.
+- Punctuation is ignored during partial tokenization, but not exact matching.
 
-## Manual Verification
+## Manual Checks
 
-These checks complement the automated test suite.
+```bash
+# Sample batch
+python main.py sample_input.json
 
-1. Evaluate the sample through the CLI:
+# Missing model answer
+printf '%s\n' \
+  '[{"id":"missing","prompt":"Test","reference_answer":"yes"}]' \
+  | python main.py
 
-   ```bash
-   cat sample_input.json | python main.py
-   ```
+# Invalid JSON: prints an error and exits with code 2
+printf '{invalid' | python main.py
+```
 
-   Expected: four item results, average score `0.5167`, one exact match, and
-   one failed item.
+## Tradeoffs and Next Steps
 
-2. Start the API and evaluate the same sample:
+Token overlap is transparent and fast, but it does not understand synonyms,
+negation, word order, or semantic equivalence. Logical extensions are multiple
+acceptable references, configurable scoring strategies, batch-size limits,
+result persistence, and observability.
 
-   ```bash
-   python main.py
-   ```
-
-   In another terminal:
-
-   ```bash
-   curl --silent \
-     --request POST \
-     --header "Content-Type: application/json" \
-     --data @sample_input.json \
-     http://127.0.0.1:8000/evaluate | python -m json.tool
-   ```
-
-   Expected: the same scores and summary as the CLI.
-
-3. Confirm missing answers fail cleanly:
-
-   ```bash
-   printf '%s\n' \
-     '[{"id":"missing","prompt":"Test","reference_answer":"yes"}]' \
-     | python main.py
-   ```
-
-   Expected: score `0.0` with reason `"Model answer is missing."`.
-
-## Deliverables Checklist
-
-- Runnable Python API and CLI with no external LLM calls
-- Deterministic exact and partial scoring
-- Per-item `id`, `score`, and `reason`
-- Average, item count, exact-match count, and failure count
-- Missing-answer, invalid-input, and empty-batch handling
-- README run instructions and tradeoff notes
-- Automated unit, API, CLI, environment, and entry-point tests
-
-## Architecture Decisions
-
-**Why `app/` is a package, not a single file**
-Each layer has one responsibility: `scoring.py` is pure logic with no HTTP
-imports, `service.py` owns batch aggregation, `main.py` owns routing. Another
-engineer can swap the scoring algorithm without touching the API contract, or
-test scoring logic without spinning up an HTTP client.
-
-**Why token-set F1, not Jaccard**
-F1 balances coverage of the reference against penalizing extra words in the
-model answer. Jaccard divides by the union, which can over-penalize a model
-that restates a short reference inside a longer sentence. F1 treats both sides
-symmetrically and gives a more intuitive partial-credit signal for factual
-answers.
-
-**Why `PARTIAL_SCORE_CAP = 0.99`**
-Partial scores are capped below `1.0` so that `score == 1.0` unambiguously
-means an exact normalized match. Without the cap, a degenerate case (e.g.,
-both answers are identical after tokenization but differ in punctuation) could
-round to `1.0` without being a true exact match.
-
-**Why Pydantic models on request and response**
-FastAPI returns a `422` with a clear error body if the caller sends a
-structurally invalid item (e.g., a missing `id`). This distinguishes API-level
-errors (bad structure) from evaluation-level edge cases (missing answer
-content), which score `0.0` rather than rejecting the request.
-
-**Why the API and CLI share a service layer**
-Both interfaces validate the same `EvaluationItem` model and call
-`evaluate_items`. This prevents scoring behavior from drifting between API and
-CLI usage while keeping input/output concerns separate.
-
-## Tradeoffs and Known Limitations
-
-| Limitation | Impact | Fix |
-|---|---|---|
-| Token overlap ignores word order | "cat bites dog" and "dog bites cat" score identically | Add n-gram or sequence similarity |
-| No semantic similarity | "automobile" vs "car" scores `0.0` | Plug in a local sentence-transformer behind a scorer interface |
-| Single reference answer per item | Aliases and paraphrases always score as partial | Accept a list of acceptable reference answers |
-| In-memory only | No persistence, no audit log | Add SQLite backend with `GET /results/{run_id}` |
-| No authentication or rate limiting | Open to abuse in a shared environment | Add API key middleware |
-
-## What I'd Add Next
-
-In priority order:
-
-1. **Configurable scoring strategy** — accept `"strategy": "exact_only" | "token_f1" | "semantic"` per request behind a `ScorerStrategy` interface so callers can choose the right tradeoff.
-2. **Semantic scorer** — plug in a local `sentence-transformers` model (e.g., `all-MiniLM-L6-v2`) as an optional strategy; no external API required.
-3. **Multiple reference answers** — accept a list so synonyms and valid paraphrases are not unfairly penalized.
-4. **Batch file ingestion** — `POST /evaluate/file` accepting a JSONL upload for offline batch jobs.
-5. **Result persistence** — store evaluation runs in SQLite and expose `GET /results/{run_id}` for historical comparison.
-6. **CI** — run the test suite on every push; add a coverage threshold gate.
-
-See [docs/IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) for the full
-step-by-step design and explanation guide.
-
-## About the Developer
-
-Built by **Aishwarya Anand** — [github.com/aish-1509](https://github.com/aish-1509)
-
-Relevant background:
-- Built and deployed a **local LLM chatbot using Ollama** at Panasonic (production setting, internal tooling).
-- Evaluated **multi-agent AI workflows** (Wan 2.2, SlimInfer, CODI) for enterprise adoption.
-- Expert in **FastAPI and REST API development** across multiple high-impact internships.
-
-## Additional Deterministic Details
-
-1. **Strict exact matching**: exact normalization only lowercases and trims,
-   matching the requested rule.
-2. **Punctuation-aware partial matching**: token extraction ignores punctuation,
-   while punctuation differences do not incorrectly increase the exact-match
-   count.
-3. **Stopword filtering**: common words such as `a`, `the`, and `is` are ignored
-   during partial scoring to reduce noise.
-4. **Shared service layer**: API and CLI calls use the same scoring and summary
-   implementation.
+See [docs/IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) for the design
+walkthrough.

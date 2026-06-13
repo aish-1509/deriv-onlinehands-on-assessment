@@ -63,7 +63,7 @@ def test_evaluate_endpoint_with_sample_input() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["summary"] == {
-        "average_score": 0.5167,
+        "average_score": 0.45,
         "number_of_items": 4,
         "exact_matches": 1,
         "failed_items": 1,

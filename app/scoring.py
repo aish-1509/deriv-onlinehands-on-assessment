@@ -4,20 +4,6 @@ import re
 from dataclasses import dataclass
 
 TOKEN_PATTERN = re.compile(r"\w+", flags=re.UNICODE)
-STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "in",
-    "is",
-    "it",
-    "of",
-    "the",
-    "to",
-    "was",
-    "were",
-}
 PARTIAL_SCORE_CAP = 0.99
 
 
@@ -38,10 +24,8 @@ def normalize_text(text: str | None) -> str:
 
 
 def tokenize(text: str) -> set[str]:
-    """Return unique tokens, ignoring punctuation and common stopwords."""
-    tokens = set(TOKEN_PATTERN.findall(text))
-    filtered = tokens - STOPWORDS
-    return filtered if filtered else tokens
+    """Return unique word-like tokens while ignoring punctuation."""
+    return set(TOKEN_PATTERN.findall(text))
 
 
 def score_answers(
