@@ -13,6 +13,15 @@ def test_normalization_and_exact_match() -> None:
     assert result.reason == "Exact match after normalization."
 
 
+def test_normalization_does_not_hide_punctuation_differences() -> None:
+    assert normalize_text(" Approved. ") == "approved."
+
+    result = score_answers("approved", "approved.")
+
+    assert result.score == PARTIAL_SCORE_CAP
+    assert result.is_exact is False
+
+
 def test_partial_score_uses_token_f1_overlap() -> None:
     result = score_answers("Earth", "Humans live on Earth.")
 

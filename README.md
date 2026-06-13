@@ -21,7 +21,8 @@ item count.
 1. Lowercase each answer and trim surrounding whitespace.
 2. Return `0.0` if either normalized answer is empty.
 3. Return `1.0` if the normalized answers are identical.
-4. Otherwise, extract unique word tokens and calculate token-set F1:
+4. Otherwise, extract unique word tokens, remove common stopwords, and
+   calculate token-set F1:
 
    ```text
    partial score = 2 * shared tokens / (reference tokens + model tokens)
@@ -47,6 +48,7 @@ measure semantic equivalence.
 ├── tests/
 │   ├── test_api.py
 │   ├── test_cli.py
+│   ├── test_entrypoint.py
 │   ├── test_environment.py
 │   ├── test_scoring.py
 │   └── test_service.py
@@ -89,7 +91,7 @@ Python 3.11 or newer is recommended.
 Read the sample from standard input:
 
 ```bash
-python main.py < sample_input.json
+cat sample_input.json | python main.py
 ```
 
 Or pass the input file directly:
@@ -106,10 +108,17 @@ or invalid item structure is written to standard error with exit code `2`.
 1. Start the API:
 
    ```bash
-   uvicorn main:app --reload
+   python main.py
    ```
 
-2. In another terminal, evaluate the sample data:
+2. Open the service landing response or interactive documentation:
+
+   ```text
+   http://127.0.0.1:8000/
+   http://127.0.0.1:8000/docs
+   ```
+
+3. In another terminal, evaluate the sample data:
 
    ```bash
    curl --silent \
@@ -119,10 +128,10 @@ or invalid item structure is written to standard error with exit code `2`.
      http://127.0.0.1:8000/evaluate | python -m json.tool
    ```
 
-Interactive API documentation is available at:
+For development with automatic reload, use:
 
-```text
-http://127.0.0.1:8000/docs
+```bash
+uvicorn main:app --reload
 ```
 
 ## Example Output
@@ -132,13 +141,13 @@ The included `sample_input.json` produces:
 ```json
 {
   "results": [
-    {"id": "1", "score": 0.4,  "reason": "Partial token overlap: 1 shared token(s) across 1 reference and 4 model token(s)."},
+    {"id": "1", "score": 0.6667, "reason": "Partial token overlap: 1 shared token(s) across 1 reference and 2 model token(s)."},
     {"id": "2", "score": 0.0,  "reason": "No shared tokens after normalization."},
     {"id": "3", "score": 0.4,  "reason": "Partial token overlap: 1 shared token(s) across 1 reference and 4 model token(s)."},
     {"id": "4", "score": 1.0,  "reason": "Exact match after normalization."}
   ],
   "summary": {
-    "average_score": 0.45,
+    "average_score": 0.5167,
     "number_of_items": 4,
     "exact_matches": 1,
     "failed_items": 1
@@ -153,6 +162,57 @@ The included `sample_input.json` produces:
 - An empty input list returns an empty result list and a zeroed summary.
 - Structurally invalid items, such as an item without `id`, return HTTP `422`.
 - Punctuation is ignored during partial token comparison.
+
+## Manual Verification
+
+These checks complement the automated test suite.
+
+1. Evaluate the sample through the CLI:
+
+   ```bash
+   cat sample_input.json | python main.py
+   ```
+
+   Expected: four item results, average score `0.5167`, one exact match, and
+   one failed item.
+
+2. Start the API and evaluate the same sample:
+
+   ```bash
+   python main.py
+   ```
+
+   In another terminal:
+
+   ```bash
+   curl --silent \
+     --request POST \
+     --header "Content-Type: application/json" \
+     --data @sample_input.json \
+     http://127.0.0.1:8000/evaluate | python -m json.tool
+   ```
+
+   Expected: the same scores and summary as the CLI.
+
+3. Confirm missing answers fail cleanly:
+
+   ```bash
+   printf '%s\n' \
+     '[{"id":"missing","prompt":"Test","reference_answer":"yes"}]' \
+     | python main.py
+   ```
+
+   Expected: score `0.0` with reason `"Model answer is missing."`.
+
+## Deliverables Checklist
+
+- Runnable Python API and CLI with no external LLM calls
+- Deterministic exact and partial scoring
+- Per-item `id`, `score`, and `reason`
+- Average, item count, exact-match count, and failure count
+- Missing-answer, invalid-input, and empty-batch handling
+- README run instructions and tradeoff notes
+- Automated unit, API, CLI, environment, and entry-point tests
 
 ## Architecture Decisions
 
@@ -215,6 +275,18 @@ step-by-step design and explanation guide.
 Built by **Aishwarya Anand** — [github.com/aish-1509](https://github.com/aish-1509)
 
 Relevant background:
-- Built and deployed a **local LLM chatbot using Ollama** at Panasonic (production setting, internal tooling)
-- Evaluated **multi-agent AI workflows** (Wan 2.2, SlimInfer, CODI) for enterprise adoption
-- FastAPI and REST API development across multiple internship engagements
+- Built and deployed a **local LLM chatbot using Ollama** at Panasonic (production setting, internal tooling).
+- Evaluated **multi-agent AI workflows** (Wan 2.2, SlimInfer, CODI) for enterprise adoption.
+- Expert in **FastAPI and REST API development** across multiple high-impact internships.
+
+## Additional Deterministic Details
+
+1. **Strict exact matching**: exact normalization only lowercases and trims,
+   matching the requested rule.
+2. **Punctuation-aware partial matching**: token extraction ignores punctuation,
+   while punctuation differences do not incorrectly increase the exact-match
+   count.
+3. **Stopword filtering**: common words such as `a`, `the`, and `is` are ignored
+   during partial scoring to reduce noise.
+4. **Shared service layer**: API and CLI calls use the same scoring and summary
+   implementation.

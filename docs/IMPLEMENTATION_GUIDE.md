@@ -82,7 +82,7 @@ remove internal words, or guess meaning.
 1. If both answers are empty, return `0.0`.
 2. If either individual answer is empty, return `0.0`.
 3. If normalized strings match exactly, return `1.0`.
-4. Tokenize both strings while ignoring punctuation.
+4. Tokenize both strings while ignoring punctuation and common stopwords.
 5. If there are no comparable or shared tokens, return `0.0`.
 6. Otherwise calculate token-set F1 and cap it at `0.99`.
 
@@ -133,7 +133,7 @@ The empty-list case is handled without division by zero and returns:
 `app/main.py` contains no scoring math. It only:
 
 1. Creates the FastAPI application.
-2. Exposes `GET /health`.
+2. Exposes browser guidance at `GET /` and readiness at `GET /health`.
 3. Accepts `POST /evaluate`.
 4. Delegates the batch to `evaluate_items`.
 
@@ -147,6 +147,7 @@ The empty-list case is handled without division by zero and returns:
 The root `main.py` exposes the FastAPI app and runs the CLI:
 
 ```bash
+python main.py
 python main.py < sample_input.json
 python main.py sample_input.json
 uvicorn main:app --reload
@@ -163,6 +164,7 @@ The tests are split for fast diagnosis:
 - `test_service.py`: summary arithmetic and empty batches
 - `test_api.py`: HTTP response shape, missing answers, and schema validation
 - `test_cli.py`: stdin, file input, JSON output, and invalid input behavior
+- `test_entrypoint.py`: verifies `python main.py` selects API mode in a terminal
 - `test_environment.py`: verifies the project runs without `.env` or API keys
 
 Run everything with:
